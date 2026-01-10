@@ -1,4 +1,4 @@
-# FSR + IMU 12 MIDI Simulator
+# FSR + IMU 12 MIDI Simulator
 
 This project is a Python simulator of a musical interface that maps pressure sensors (FSRs) and an IMU to MIDI output.
 No hardware is required — everything is simulated in software using sliders and controls.
@@ -10,18 +10,18 @@ No hardware is required — everything is simulated in software using sliders an
 - Maps:
   - Each FSR 12 MIDI note (chromatic by default, starting at MIDI note 60).
   - FSR pressure 12 MIDI velocity.
-  - IMU Gx 12 pitch bend.
-  - IMU Gy 12 modulation (MIDI CC 1).
+  - IMU Gx 12 pitch bend.
+  - IMU Gy 12 modulation (MIDI CC 1).
 - Real-time Tkinter GUI with sliders for sensors and a log panel showing sent MIDI messages.
 - Uses `mido` + `python-rtmidi` for real MIDI I/O (creates a virtual port when backend supports it), with console/log echo.
 
 ## Files
 
-- `main.py` 12 program entry point
-- `gui.py` 12 Tkinter GUI and main loop
-- `sensors.py` 12 simulated FSR and IMU classes (smoothing & gain)
-- `midi_mapper.py` 12 MIDI driver and mapping logic
-- `requirements.txt` 12 Python dependencies
+- `main.py` 12 program entry point
+- `gui.py` 12 Tkinter GUI and main loop
+- `sensors.py` 12 simulated FSR and IMU classes (smoothing & gain)
+- `midi_mapper.py` 12 MIDI driver and mapping logic
+- `requirements.txt` 12 Python dependencies
 
 ## Quick start
 
