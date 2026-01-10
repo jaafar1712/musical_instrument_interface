@@ -166,9 +166,10 @@ class Voice:
         # Apply envelope and velocity
         output = output * env_value * self.velocity * 0.9
         
-        # Apply DC blocking and smoothing filter to prevent clicks
+        # Apply ULTRA-STRONG low-pass filter (90% old, 10% new) for maximum smoothing
+        # This aggressive filtering removes noise while keeping tone
         for i in range(len(output)):
-            smoothed = 0.95 * self.last_output + 0.05 * output[i]
+            smoothed = 0.90 * self.last_output + 0.10 * output[i]
             output[i] = smoothed
             self.last_output = smoothed
         
