@@ -13,6 +13,7 @@ from tkinter import ttk, scrolledtext
 import time
 from sensors import FSRChannel, IMUSimulator
 from midi_mapper import MIDIDriver, MidiMapper
+from audio_synth import SimpleSynth
 from threading import Lock
 
 UPDATE_HZ = 60.0
@@ -27,10 +28,13 @@ class App:
         self.fsrs = [FSRChannel(i, tau=0.05, gain=1.0) for i in range(5)]
         self.imu = IMUSimulator(gyro_range_dps=250.0)
 
+        # audio synth
+        self.synth = SimpleSynth()
+        
         # midi
         self.log_widget = None
         self.midi_driver = MIDIDriver(port_name="FSR-IMU-Sim", virtual=True, logger=self._log)
-        self.mapper = MidiMapper(self.midi_driver, notes=None, logger=self._log)
+        self.mapper = MidiMapper(self.midi_driver, notes=None, logger=self._log, audio_synth=self.synth)
 
         # GUI elements
         self._build_ui()
@@ -47,13 +51,37 @@ class App:
         fsr_frame = ttk.LabelFrame(frm, text="FSR Sensors (0..1023)", padding=6)
         fsr_frame.grid(row=0, column=0, sticky="nw", padx=4, pady=4)
         self.fsr_sliders = []
+        self.fsr_value_labels = []
+        self.fsr_freeze_vars = []
         for i in range(5):
-            s = ttk.Scale(fsr_frame, from_=0, to=1023, orient=tk.VERTICAL)
+            col_frame = ttk.Frame(fsr_frame)
+            col_frame.grid(row=0, column=i, padx=6, pady=6)
+            
+            # Value display
+            val_lbl = ttk.Label(col_frame, text="0", width=6, anchor="center")
+            val_lbl.pack()
+            self.fsr_value_labels.append(val_lbl)
+            
+            # Slider
+            s = ttk.Scale(col_frame, from_=0, to=1023, orient=tk.VERTICAL, length=200)
             s.set(0)
-            s.grid(row=0, column=i, padx=6, pady=6)
-            lbl = ttk.Label(fsr_frame, text=f"FSR {i}")
-            lbl.grid(row=1, column=i)
+            s.pack()
             self.fsr_sliders.append(s)
+            
+            # FSR label and controls
+            lbl = ttk.Label(col_frame, text=f"FSR {i}")
+            lbl.pack()
+            
+            # Freeze checkbox
+            freeze_var = tk.BooleanVar(value=False)
+            freeze_cb = ttk.Checkbutton(col_frame, text="Freeze", variable=freeze_var)
+            freeze_cb.pack()
+            self.fsr_freeze_vars.append(freeze_var)
+            
+            # Reset button
+            reset_btn = ttk.Button(col_frame, text="Reset", 
+                                   command=lambda idx=i: self.fsr_sliders[idx].set(0))
+            reset_btn.pack()
 
         # IMU controls
         imu_frame = ttk.LabelFrame(frm, text="IMU (Accel g, Gyro dps)", padding=6)
@@ -90,6 +118,11 @@ class App:
         midi_frame = ttk.Frame(ctrl_frame)
         midi_frame.grid(row=0, column=4, padx=8)
         self.connect_btn = ttk.Button(midi_frame, text="Open MIDI Output", command=self._open_midi)
+        
+        # Audio control
+        self.audio_enabled_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(midi_frame, text="Audio Feedback", variable=self.audio_enabled_var, 
+                       command=self._toggle_audio).grid(row=0, column=2, padx=4)
         self.connect_btn.grid(row=0, column=0, padx=4)
         self.virtual_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(midi_frame, text="Virtual Port", variable=self.virtual_var).grid(row=0, column=1, padx=4)
@@ -103,6 +136,15 @@ class App:
         # Make window resizable
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
+
+    def _toggle_audio(self):
+        if self.audio_enabled_var.get():
+            self.mapper.audio_synth = self.synth
+            self._log("Audio feedback enabled")
+        else:
+            self.synth.all_notes_off()
+            self.mapper.audio_synth = None
+            self._log("Audio feedback disabled")
 
     def _open_midi(self):
         self.midi_driver.virtual = bool(self.virtual_var.get())
@@ -122,9 +164,16 @@ class App:
     def _update_sensors_from_ui(self, dt):
         # Update FSRs from sliders (0..1023 -> 0..1)
         for i, s in enumerate(self.fsr_sliders):
-            raw_adc = s.get()
-            level = float(raw_adc) / 1023.0
-            self.fsrs[i].set_raw(level)
+            # Check if this sensor is frozen
+            if not self.fsr_freeze_vars[i].get():
+                raw_adc = s.get()
+                level = float(raw_adc) / 1023.0
+                self.fsrs[i].set_raw(level)
+            
+            # Update value display
+            current_val = int(s.get())
+            self.fsr_value_labels[i].config(text=str(current_val))
+            
             # apply global tau and gain
             try:
                 self.fsrs[i].tau = float(self.tau_var.get())
@@ -172,5 +221,10 @@ class App:
         # start periodic loop
         self._last_time = time.time()
         self.root.after(0, self._main_loop)
-        self.root.mainloop()
-        self.running = False
+        try:
+            self.root.mainloop()
+        finally:
+            self.running = False
+            # Clean up audio
+            if self.synth:
+                self.synth.close()

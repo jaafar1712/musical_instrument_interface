@@ -44,12 +44,13 @@ class MIDIDriver:
             self.logger(f"Failed to send MIDI message: {e}")
 
 class MidiMapper:
-    def __init__(self, midi_driver: MIDIDriver, notes: List[int] = None, channel: int = 0, logger: Optional[Callable] = None):
+    def __init__(self, midi_driver: MIDIDriver, notes: List[int] = None, channel: int = 0, logger: Optional[Callable] = None, audio_synth=None):
         self.driver = midi_driver
         self.notes = notes or DEFAULT_NOTES
         self.channel = channel
         self.logger = logger or (lambda s: None)
         self.threshold = DEFAULT_THRESHOLD
+        self.audio_synth = audio_synth  # Optional audio synthesizer
         # track note state to send note_off when pressure released
         self._note_on = [False] * len(self.notes)
 
@@ -61,28 +62,65 @@ class MidiMapper:
         # fsr_levels: list of smoothed, amplified levels 0..1
         for i, level in enumerate(fsr_levels):
             note = self.notes[i] if i < len(self.notes) else (DEFAULT_BASE_NOTE + i)
+            instrument = f'fsr{i}'
+            
             if level >= self.threshold and not self._note_on[i]:
                 vel = self._velocity_from_level(level)
                 msg = mido.Message('note_on', note=note, velocity=vel, channel=self.channel)
                 self.driver.send(msg)
+                # Play audio feedback with specific instrument
+                if self.audio_synth:
+                    self.audio_synth.note_on(note, vel, instrument)
                 self._note_on[i] = True
             elif level < self.threshold and self._note_on[i]:
                 msg = mido.Message('note_off', note=note, velocity=0, channel=self.channel)
                 self.driver.send(msg)
+                # Stop audio feedback
+                if self.audio_synth:
+                    self.audio_synth.note_off(note, instrument)
                 self._note_on[i] = False
             else:
                 # Optionally, send aftertouch or continuous velocity updates (not implemented)
                 pass
 
-        # IMU -> pitch bend and modulation CC
+        # IMU -> pitch bend and modulation CC + audio feedback
         # Use gyro X (gx) mapped to pitch bend, range -8192..8191
         gx = imu_snapshot.get("gx", 0.0)
         pitch = int(max(-1.0, min(1.0, gx)) * 8191)
         msg_pb = mido.Message('pitchwheel', pitch=pitch, channel=self.channel)
         self.driver.send(msg_pb)
+        
+        # Audio feedback for gyro X - map to notes 72-84 (high register)
+        if self.audio_synth and abs(gx) > 0.1:
+            gx_note = int(72 + (gx + 1.0) / 2.0 * 12)  # Map -1..1 to notes 72-84
+            gx_vel = int(abs(gx) * 100)
+            self.audio_synth.note_on(gx_note, gx_vel, 'imu_gx')
+        elif self.audio_synth:
+            # Turn off when below threshold
+            for n in range(72, 85):
+                self.audio_synth.note_off(n, 'imu_gx')
 
         # Use gyro Y (gy) mapped to CC1 (modulation) 0..127
         gy = imu_snapshot.get("gy", 0.0)
         cc_val = max(0, min(127, int((gy + 1.0) / 2.0 * 127)))
         msg_cc = mido.Message('control_change', control=1, value=cc_val, channel=self.channel)
         self.driver.send(msg_cc)
+        
+        # Audio feedback for gyro Y - map to notes 84-96
+        if self.audio_synth and abs(gy) > 0.1:
+            gy_note = int(84 + (gy + 1.0) / 2.0 * 12)
+            gy_vel = int(abs(gy) * 100)
+            self.audio_synth.note_on(gy_note, gy_vel, 'imu_gy')
+        elif self.audio_synth:
+            for n in range(84, 97):
+                self.audio_synth.note_off(n, 'imu_gy')
+        
+        # Audio feedback for gyro Z - map to notes 96-108
+        gz = imu_snapshot.get("gz", 0.0)
+        if self.audio_synth and abs(gz) > 0.1:
+            gz_note = int(96 + (gz + 1.0) / 2.0 * 12)
+            gz_vel = int(abs(gz) * 80)
+            self.audio_synth.note_on(gz_note, gz_vel, 'imu_gz')
+        elif self.audio_synth:
+            for n in range(96, 109):
+                self.audio_synth.note_off(n, 'imu_gz')
