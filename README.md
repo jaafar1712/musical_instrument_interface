@@ -1,4 +1,4 @@
-# FSR + IMU 12 MIDI Simulator
+# FSR + IMU MIDI Simulator
 
 This project is a Python simulator of a musical interface that maps pressure sensors (FSRs) and an IMU to MIDI output.
 No hardware is required — everything is simulated in software using sliders and controls.
@@ -8,20 +8,20 @@ No hardware is required — everything is simulated in software using sliders an
 - Simulates 5 FSR pressure inputs with RC low-pass smoothing and an optional gain stage.
 - Simulates IMU (Ax, Ay, Az, Gx, Gy, Gz).
 - Maps:
-  - Each FSR 12 MIDI note (chromatic by default, starting at MIDI note 60).
-  - FSR pressure 12 MIDI velocity.
-  - IMU Gx 12 pitch bend.
-  - IMU Gy 12 modulation (MIDI CC 1).
+  - Each FSR maps to a MIDI note (chromatic by default, starting at MIDI note 60).
+  - FSR pressure maps to MIDI velocity.
+  - IMU Gx maps to pitch bend.
+  - IMU Gy maps to modulation (MIDI CC 1).
 - Real-time Tkinter GUI with sliders for sensors and a log panel showing sent MIDI messages.
 - Uses `mido` + `python-rtmidi` for real MIDI I/O (creates a virtual port when backend supports it), with console/log echo.
 
 ## Files
 
-- `main.py` 12 program entry point
-- `gui.py` 12 Tkinter GUI and main loop
-- `sensors.py` 12 simulated FSR and IMU classes (smoothing & gain)
-- `midi_mapper.py` 12 MIDI driver and mapping logic
-- `requirements.txt` 12 Python dependencies
+- `main.py`: program entry point
+- `gui.py`: Tkinter GUI and main loop
+- `sensors.py`: simulated FSR and IMU classes (smoothing & gain)
+- `midi_mapper.py`: MIDI driver and mapping logic
+- `requirements.txt`: Python dependencies
 
 ## Quick start
 
@@ -49,10 +49,10 @@ No hardware is required — everything is simulated in software using sliders an
 
 ## MIDI mapping defaults
 
-- FSR 0..4 12 MIDI notes [60, 61, 62, 63, 64] (chromatic)
+- FSR 0..4 mapped to MIDI notes [60, 61, 62, 63, 64] (chromatic)
 - Velocity = pressure (0..1) mapped to 1..127
-- IMU Gx (gyro X) 12 pitch bend (-8191..+8191)
-- IMU Gy (gyro Y) 12 CC1 (modulation) 0..127
+- IMU Gx (gyro X) maps to pitch bend (-8191..+8191)
+- IMU Gy (gyro Y) maps to CC1 (modulation) 0..127
 
 ## Customization
 
