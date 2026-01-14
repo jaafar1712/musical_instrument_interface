@@ -12,7 +12,6 @@ from typing import Dict
 
 @dataclass
 class ADSREnvelope:
-
     """Attack, Decay, Sustain, Release envelope"""
     attack: float = 0.01   # seconds
     decay: float = 0.1     # seconds
@@ -253,14 +252,11 @@ class RealtimeSynth:
         with self.lock:
             output = np.zeros(frames, dtype=np.float32)
 
-            # Mix all active voices
+            # Mix all active voices - using sine wave for cleanest sound
             voices_to_remove = []
             for voice_id, voice in self.voices.items():
-                # Use sine wave for cleanest sound
-                waveform = 'sine'
-
                 # Generate audio
-                voice_output = voice.generate(frames, waveform)
+                voice_output = voice.generate(frames, 'sine')
                 output += voice_output
 
                 # Mark finished voices for removal
