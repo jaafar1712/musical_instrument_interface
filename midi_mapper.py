@@ -13,6 +13,7 @@ DEFAULT_BASE_NOTE = 60  # Middle C (C4)
 DEFAULT_NOTES = [DEFAULT_BASE_NOTE + i for i in range(5)]  # chromatic for 5 FSRs
 DEFAULT_THRESHOLD = 0.05  # when to trigger note on/off
 
+
 class MIDIDriver:
     def __init__(self, port_name: str = "fsr-sim", virtual: bool = True, logger: Optional[Callable] = None):
         self.port_name = port_name
@@ -43,8 +44,10 @@ class MIDIDriver:
         except Exception as e:
             self.logger(f"Failed to send MIDI message: {e}")
 
+
 class MidiMapper:
-    def __init__(self, midi_driver: MIDIDriver, notes: List[int] = None, channel: int = 0, logger: Optional[Callable] = None, audio_synth=None):
+    def __init__(self, midi_driver: MIDIDriver, notes: List[int] = None, channel: int = 0,
+                 logger: Optional[Callable] = None, audio_synth=None):
         self.driver = midi_driver
         self.notes = notes or DEFAULT_NOTES
         self.channel = channel
@@ -53,10 +56,10 @@ class MidiMapper:
         self.audio_synth = audio_synth  # Optional audio synthesizer
         # track note state to send note_off when pressure released
         self._note_on = [False] * len(self.notes)
-        
+
         # IMU audio control
         self.imu_audio_enabled = True  # ENABLED by default
-        
+
         # IMU velocity smoothing buffers - for smooth audio transitions
         self._imu_velocities = {}  # Store last velocity for each IMU axis
         self._imu_notes = {}  # Store current note for each IMU axis
@@ -70,7 +73,7 @@ class MidiMapper:
         for i, level in enumerate(fsr_levels):
             note = self.notes[i] if i < len(self.notes) else (DEFAULT_BASE_NOTE + i)
             instrument = f'fsr{i}'
-            
+
             if level >= self.threshold and not self._note_on[i]:
                 vel = self._velocity_from_level(level)
                 msg = mido.Message('note_on', note=note, velocity=vel, channel=self.channel)
@@ -96,18 +99,18 @@ class MidiMapper:
         pitch = int(max(-1.0, min(1.0, gx)) * 8191)
         msg_pb = mido.Message('pitchwheel', pitch=pitch, channel=self.channel)
         self.driver.send(msg_pb)
-        
+
         # Audio feedback for gyro X - CONTINUOUS VARIATION WITH SMOOTHING
         if self.audio_synth and self.imu_audio_enabled:
             # Continuous mapping: any movement produces proportional volume
             raw_vel = max(1, int(abs(gx) * 80))  # Reduced max to 80 to avoid harsh peaks
             raw_vel = min(80, raw_vel)  # Cap at 80
-            
+
             # Ultra-strong exponential smoothing: 85% old velocity + 15% new (very smooth)
             last_vel = self._imu_velocities.get('gx', raw_vel)
             smoothed_vel = int(last_vel * 0.85 + raw_vel * 0.15)
             self._imu_velocities['gx'] = smoothed_vel
-            
+
             if smoothed_vel > 8:  # Slightly higher threshold to filter tiny noise
                 self.audio_synth.note_on(72, smoothed_vel, 'imu_gx')
             else:
@@ -118,7 +121,7 @@ class MidiMapper:
         cc_val = max(0, min(127, int((gy + 1.0) / 2.0 * 127)))
         msg_cc = mido.Message('control_change', control=1, value=cc_val, channel=self.channel)
         self.driver.send(msg_cc)
-        
+
         # Audio feedback for gyro Y - CONTINUOUS VARIATION WITH SMOOTHING
         if self.audio_synth and self.imu_audio_enabled:
             raw_vel = max(1, int(abs(gy) * 80))
@@ -130,7 +133,7 @@ class MidiMapper:
                 self.audio_synth.note_on(84, smoothed_vel, 'imu_gy')
             else:
                 self.audio_synth.note_off(84, 'imu_gy')
-        
+
         # Audio feedback for gyro Z - CONTINUOUS VARIATION WITH SMOOTHING
         if self.audio_synth and self.imu_audio_enabled:
             gz = imu_snapshot.get("gz", 0.0)
@@ -143,12 +146,12 @@ class MidiMapper:
                 self.audio_synth.note_on(96, smoothed_vel, 'imu_gz')
             else:
                 self.audio_synth.note_off(96, 'imu_gz')
-        
+
         # Audio feedback for accelerometer axes - SIMPLIFIED
         ax = imu_snapshot.get("ax", 0.0)
         ay = imu_snapshot.get("ay", 0.0)
         az = imu_snapshot.get("az", 0.0)
-        
+
         if self.audio_synth and self.imu_audio_enabled:
             # Ax - CONTINUOUS VARIATION WITH SMOOTHING
             raw_vel_ax = max(1, int(abs(ax) * 80))
@@ -160,7 +163,7 @@ class MidiMapper:
                 self.audio_synth.note_on(48, smoothed_vel_ax, 'imu_ax')
             else:
                 self.audio_synth.note_off(48, 'imu_ax')
-            
+
             # Ay - CONTINUOUS VARIATION WITH SMOOTHING
             raw_vel_ay = max(1, int(abs(ay) * 80))
             raw_vel_ay = min(80, raw_vel_ay)
@@ -171,7 +174,7 @@ class MidiMapper:
                 self.audio_synth.note_on(36, smoothed_vel_ay, 'imu_ay')
             else:
                 self.audio_synth.note_off(36, 'imu_ay')
-            
+
             # Az - CONTINUOUS VARIATION WITH SMOOTHING
             raw_vel_az = max(1, int(abs(az) * 80))
             raw_vel_az = min(80, raw_vel_az)
