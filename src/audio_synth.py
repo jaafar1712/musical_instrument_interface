@@ -200,6 +200,8 @@ class RealtimeSynth:
         
         # Master volume control (0.0 to 2.0)
         self.master_volume = 1.0
+        # Expression control (0.0 to 1.0)
+        self.expression = 1.0
         
         # Active voices
         self.voices: Dict[str, Voice] = {}
@@ -237,11 +239,20 @@ class RealtimeSynth:
         """Set master volume (0.0 to 2.0)"""
         with self.lock:
             self.master_volume = max(0.0, min(2.0, volume))
+
+    def set_expression(self, expression):
+        """Set expression (0.0 to 1.0)"""
+        with self.lock:
+            self.expression = max(0.0, min(1.0, expression))
     
     def get_genre_list(self):
         """Get list of available genres"""
         return [(key, preset['name'], preset['description']) 
                 for key, preset in GenrePreset.PRESETS.items()]
+
+    def get_scale(self):
+        """Get current scale intervals for the active genre"""
+        return list(self.preset.get('scale', []))
     
     def _audio_callback(self, outdata, frames, time_info, status):
         """Real-time audio callback"""
@@ -278,7 +289,7 @@ class RealtimeSynth:
                 output = output / max_val * 0.7
             
             # Apply master volume
-            output = output * self.master_volume
+            output = output * self.master_volume * self.expression
             
             # Final soft clipping
             output = np.tanh(output)
@@ -346,6 +357,10 @@ class SimpleSynth:
     def set_volume(self, volume):
         if self.enabled and self.synth:
             self.synth.set_volume(volume)
+
+    def set_expression(self, expression):
+        if self.enabled and self.synth:
+            self.synth.set_expression(expression)
     
     def set_genre(self, genre):
         if self.enabled and self.synth:
@@ -354,6 +369,11 @@ class SimpleSynth:
     def get_genre_list(self):
         if self.enabled and self.synth:
             return self.synth.get_genre_list()
+        return []
+
+    def get_scale(self):
+        if self.enabled and self.synth:
+            return self.synth.get_scale()
         return []
     
     def note_on(self, note, velocity=127, instrument='fsr0'):

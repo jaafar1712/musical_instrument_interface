@@ -1,7 +1,7 @@
 """
 Tkinter GUI for the simulator.
 
-- Provides sliders for 10 FSR sensors
+- Provides sliders for 10 FSR sensors (0..100)
 - Sliders for IMU axes (Ax, Ay, Az, Gx, Gy, Gz)
 - Controls for smoothing (tau) and gain per FSR (simple global control provided)
 - Connect button for MIDI
@@ -36,7 +36,7 @@ class App:
         # midi
         self.log_widget = None
         self.midi_driver = MIDIDriver(port_name="FSR-IMU-Sim", virtual=True, logger=self._log)
-        self.mapper = MidiMapper(self.midi_driver, notes=None, logger=self._log, audio_synth=self.synth)
+        self.mapper = MidiMapper(self.midi_driver, logger=self._log, audio_synth=self.synth)
 
         # GUI elements
         self._build_ui()
@@ -63,8 +63,8 @@ class App:
     
     def _build_main_controls(self, frm):
 
-        # FSR sliders (0..1023 to mimic ADC)
-        fsr_frame = ttk.LabelFrame(frm, text="FSR Sensors (0..1023)", padding=6)
+        # FSR sliders (0..100 normalized)
+        fsr_frame = ttk.LabelFrame(frm, text="FSR Sensors (0..100)", padding=6)
         fsr_frame.grid(row=0, column=0, sticky="nw", padx=4, pady=4)
         self.fsr_sliders = []
         self.fsr_value_labels = []
@@ -81,7 +81,7 @@ class App:
             self.fsr_value_labels.append(val_lbl)
             
             # Slider
-            s = ttk.Scale(col_frame, from_=0, to=1023, orient=tk.VERTICAL, length=200)
+            s = ttk.Scale(col_frame, from_=0, to=100, orient=tk.VERTICAL, length=200)
             s.set(0)
             s.pack()
             self.fsr_sliders.append(s)
@@ -278,12 +278,12 @@ class App:
                 print(text)
 
     def _update_sensors_from_ui(self, dt):
-        # Update FSRs from sliders (0..1023 -> 0..1)
+        # Update FSRs from sliders (0..100 -> 0..1)
         for i, s in enumerate(self.fsr_sliders):
             # Check if this sensor is frozen
             if not self.fsr_freeze_vars[i].get():
-                raw_adc = s.get()
-                level = float(raw_adc) / 1023.0
+                raw_val = s.get()
+                level = float(raw_val) / 100.0
                 self.fsrs[i].set_raw(level)
             
             # Update value display
