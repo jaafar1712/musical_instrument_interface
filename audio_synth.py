@@ -7,7 +7,8 @@ import numpy as np
 import sounddevice as sd
 from threading import Lock
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict
+
 
 @dataclass
 class ADSREnvelope:
@@ -16,10 +17,11 @@ class ADSREnvelope:
     decay: float = 0.1     # seconds
     sustain: float = 0.7   # level 0-1
     release: float = 0.2   # seconds
-    
+
+
 class GenrePreset:
     """Musical genre characteristics"""
-    
+
     PRESETS = {
         'jazz': {
             'name': 'Jazz',
@@ -95,9 +97,10 @@ class GenrePreset:
         }
     }
 
+
 class Voice:
     """Individual synthesizer voice with envelope and effects"""
-    
+
     def __init__(self, freq, velocity, preset, sample_rate=44100):
         self.freq = freq
         self.velocity = velocity / 127.0
@@ -108,12 +111,12 @@ class Voice:
         self.released = False
         self.release_age = 0.0
         self.last_output = 0.0  # For smoothing
-        
+
     def generate(self, num_samples, waveform_type='sine'):
         """Generate audio samples with envelope and effects"""
         dt = 1.0 / self.sample_rate
         envelope = self.preset['envelope']
-        
+
         # Calculate envelope value
         if not self.released:
             if self.age < envelope.attack:
@@ -133,20 +136,20 @@ class Voice:
                 env_value = envelope.sustain * (1.0 - release_progress)
             else:
                 env_value = 0.0
-        
+
         # Generate base waveform - SIMPLIFIED for cleaner sound
         freq = self.freq
-        
+
         # Add subtle vibrato only for sine waves
         vibrato_rate = self.preset.get('vibrato_rate', 0)
         vibrato_depth = self.preset.get('vibrato_depth', 0)
         if vibrato_rate > 0 and self.age > 0.2 and waveform_type == 'sine':
             vibrato = np.sin(2 * np.pi * vibrato_rate * self.age) * vibrato_depth
             freq = freq * (1.0 + vibrato)
-        
+
         phase_increment = freq / self.sample_rate
         phases = (self.phase + np.arange(num_samples) * phase_increment) % 1.0
-        
+
         # Generate PURE waveform - no harmonics for cleaner sound
         if waveform_type == 'sine':
             output = np.sin(2 * np.pi * phases)
@@ -160,54 +163,55 @@ class Voice:
             output = np.where((phases % 1.0) < 0.3, 0.5, -0.5)
         else:
             output = np.sin(2 * np.pi * phases)
-        
+
         self.phase = phases[-1]
-        
+
         # Apply envelope and velocity
         output = output * env_value * self.velocity * 0.9
-        
+
         # Apply ULTRA-STRONG low-pass filter (90% old, 10% new) for maximum smoothing
         # This aggressive filtering removes noise while keeping tone
         for i in range(len(output)):
             smoothed = 0.90 * self.last_output + 0.10 * output[i]
             output[i] = smoothed
             self.last_output = smoothed
-        
+
         # Update age
         self.age += num_samples * dt
         if self.released:
             self.release_age += num_samples * dt
-        
+
         return output.astype(np.float32)
-    
+
     def is_finished(self):
         """Check if voice has finished (after release)"""
         if self.released:
             return self.release_age >= self.preset['envelope'].release
         return False
 
+
 class RealtimeSynth:
     """Real-time polyphonic synthesizer with genre presets"""
-    
+
     def __init__(self, sample_rate=44100, block_size=512):
         self.sample_rate = sample_rate
         self.block_size = block_size
         self.lock = Lock()
-        
+
         # Set default genre
         self.current_genre = 'jazz'
         self.preset = GenrePreset.PRESETS[self.current_genre]
-        
+
         # Master volume control (0.0 to 2.0)
         self.master_volume = 1.0
-        
+
         # Active voices
         self.voices: Dict[str, Voice] = {}
-        
+
         # Reverb buffer (simple delay-based reverb)
         self.reverb_buffer = np.zeros(int(sample_rate * 0.2), dtype=np.float32)
         self.reverb_index = 0
-        
+
         # Start audio stream
         try:
             self.stream = sd.OutputStream(
@@ -223,7 +227,7 @@ class RealtimeSynth:
             print(f"Failed to start audio: {e}")
             self.stream = None
             self.enabled = False
-    
+
     def set_genre(self, genre_name):
         """Change the current musical genre"""
         if genre_name in GenrePreset.PRESETS:
@@ -232,105 +236,100 @@ class RealtimeSynth:
                 self.preset = GenrePreset.PRESETS[genre_name]
                 # Clear all voices when changing genre
                 self.voices.clear()
-    
+
     def set_volume(self, volume):
         """Set master volume (0.0 to 2.0)"""
         with self.lock:
             self.master_volume = max(0.0, min(2.0, volume))
-    
+
     def get_genre_list(self):
         """Get list of available genres"""
-        return [(key, preset['name'], preset['description']) 
+        return [(key, preset['name'], preset['description'])
                 for key, preset in GenrePreset.PRESETS.items()]
-    
+
     def _audio_callback(self, outdata, frames, time_info, status):
         """Real-time audio callback"""
         with self.lock:
             output = np.zeros(frames, dtype=np.float32)
-            
-            # Get waveform types for current genre
-            waveforms = self.preset['waveforms']
-            
-            # Mix all active voices
+
+            # Mix all active voices - using sine wave for cleanest sound
             voices_to_remove = []
             for voice_id, voice in self.voices.items():
-                # Use sine wave for cleanest sound
-                waveform = 'sine'
-                
                 # Generate audio
-                voice_output = voice.generate(frames, waveform)
+                voice_output = voice.generate(frames, 'sine')
                 output += voice_output
-                
+
                 # Mark finished voices for removal
                 if voice.is_finished():
                     voices_to_remove.append(voice_id)
-            
+
             # Remove finished voices
             for voice_id in voices_to_remove:
                 del self.voices[voice_id]
-            
+
             # NO REVERB - keep it clean
-            
+
             # Smooth limiting without distortion
             max_val = np.max(np.abs(output))
             if max_val > 0.7:
                 # Gentle compression only if needed
                 output = output / max_val * 0.7
-            
+
             # Apply master volume
             output = output * self.master_volume
-            
+
             # Final soft clipping
             output = np.tanh(output)
-            
+
             # Final output
             outdata[:, 0] = output
-    
+
     def midi_to_freq(self, note):
         """Convert MIDI note to frequency"""
         return 440.0 * (2.0 ** ((note - 69) / 12.0))
-    
+
     def quantize_to_scale(self, note):
         """Quantize note to current genre's scale"""
         scale = self.preset['scale']
         octave = note // 12
         pitch_class = note % 12
-        
+
         # Find nearest note in scale
         closest = min(scale, key=lambda x: abs(x - pitch_class))
         return octave * 12 + closest
-    
+
     def note_on(self, note, velocity=127, instrument='fsr0'):
         """Start a voice"""
         # Quantize to musical scale
         note = self.quantize_to_scale(note)
-        
+
         voice_id = f"{instrument}_{note}"
         freq = self.midi_to_freq(note)
-        
+
         with self.lock:
             self.voices[voice_id] = Voice(freq, velocity, self.preset, self.sample_rate)
-    
+
     def note_off(self, note, instrument='fsr0'):
         """Release a voice"""
         note = self.quantize_to_scale(note)
         voice_id = f"{instrument}_{note}"
-        
+
         with self.lock:
             if voice_id in self.voices:
                 self.voices[voice_id].released = True
-    
+
     def all_notes_off(self):
         """Stop all voices immediately"""
         with self.lock:
             self.voices.clear()
-    
+
     def close(self):
         """Clean up"""
         self.all_notes_off()
         if self.stream:
             self.stream.stop()
             self.stream.close()
+
 
 # Backwards compatibility
 class SimpleSynth:
@@ -342,32 +341,32 @@ class SimpleSynth:
             print(f"Audio init failed: {e}")
             self.synth = None
             self.enabled = False
-    
+
     def set_volume(self, volume):
         if self.enabled and self.synth:
             self.synth.set_volume(volume)
-    
+
     def set_genre(self, genre):
         if self.enabled and self.synth:
             self.synth.set_genre(genre)
-    
+
     def get_genre_list(self):
         if self.enabled and self.synth:
             return self.synth.get_genre_list()
         return []
-    
+
     def note_on(self, note, velocity=127, instrument='fsr0'):
         if self.enabled and self.synth:
             self.synth.note_on(note, velocity, instrument)
-    
+
     def note_off(self, note, instrument='fsr0'):
         if self.enabled and self.synth:
             self.synth.note_off(note, instrument)
-    
+
     def all_notes_off(self):
         if self.enabled and self.synth:
             self.synth.all_notes_off()
-    
+
     def close(self):
         if self.enabled and self.synth:
             self.synth.close()

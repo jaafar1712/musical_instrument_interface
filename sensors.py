@@ -7,9 +7,8 @@ Provides:
 - LowPassFilter: helper to implement RC-like smoothing
 """
 
-import time
 from dataclasses import dataclass, field
-from typing import List
+
 
 class LowPassFilter:
     def __init__(self, tau: float = 0.05, dt: float = 1/60):
@@ -28,6 +27,7 @@ class LowPassFilter:
     @property
     def value(self) -> float:
         return self._y
+
 
 @dataclass
 class FSRChannel:
@@ -55,6 +55,7 @@ class FSRChannel:
     @property
     def smoothed(self) -> float:
         return self._filter.value * self.gain
+
 
 class IMUSimulator:
     """
